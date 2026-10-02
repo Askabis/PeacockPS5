@@ -50,6 +50,7 @@ int main()
     std::snprintf(target_line.data(), target_line.size(), "TARGET: http://%s:%u%s", config.host,
                   static_cast<unsigned>(config.port), config.path);
     std::snprintf(status_line.data(), status_line.size(), "%s", probe.summary);
-    std::snprintf(detail_line.data(), detail_line.size(), "%s", probe.first_line[0] == '\0' ? "NO RESPONSE LINE" : probe.first_line);
+    std::snprintf(detail_line.data(), detail_line.size(), "%s",
+                  probe.first_line[0] == '\0' ? "NO RESPONSE LINE" : probe.first_line);
     ps5::demo::run(draw_scene, banner.data());
 }

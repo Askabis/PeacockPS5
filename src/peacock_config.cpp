@@ -86,7 +86,8 @@ Config load_config() noexcept
 {
     Config config{};
     std::array<char, 1024> buffer{};
-    if (read_text_file(download_config, std::span{buffer}) || read_text_file(asset_config, std::span{buffer}))
+    if (read_text_file(download_config, std::span{buffer}) ||
+        read_text_file(asset_config, std::span{buffer}))
         parse_config_text(config, buffer.data());
     return config;
 }
@@ -94,7 +95,8 @@ Config load_config() noexcept
 bool parse_ipv4(const char *text, std::uint32_t &network_order_address) noexcept
 {
     unsigned parts[4]{};
-    const int matched = std::sscanf(text, "%u.%u.%u.%u", &parts[0], &parts[1], &parts[2], &parts[3]);
+    const int matched =
+        std::sscanf(text, "%u.%u.%u.%u", &parts[0], &parts[1], &parts[2], &parts[3]);
     if (matched != 4)
         return false;
     for (const auto part : parts)

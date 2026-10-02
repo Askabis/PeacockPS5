@@ -35,8 +35,10 @@ std::uint16_t to_network16(std::uint16_t value) noexcept
 
 std::uint32_t to_ps5_ipv4(std::uint32_t network_order_address) noexcept
 {
-    return ((network_order_address & 0x000000ffU) << 24U) | ((network_order_address & 0x0000ff00U) << 8U) |
-           ((network_order_address & 0x00ff0000U) >> 8U) | ((network_order_address & 0xff000000U) >> 24U);
+    return ((network_order_address & 0x000000ffU) << 24U) |
+           ((network_order_address & 0x0000ff00U) << 8U) |
+           ((network_order_address & 0x00ff0000U) >> 8U) |
+           ((network_order_address & 0xff000000U) >> 24U);
 }
 
 bool send_all(int socket, const char *data, std::size_t size) noexcept
@@ -85,8 +87,10 @@ ProbeResult run_probe(const Config &config) noexcept
     for (const int option : {0x1105, 0x1106, 0x1109})
         (void)sceNetSetsockopt(socket, socket_level, option, &timeout_us, sizeof(timeout_us));
 
-    const NetSockaddrIn target{sizeof(NetSockaddrIn), 2, to_network16(config.port), to_ps5_ipv4(address), 0, {0}};
-    if (const int connect_result = sceNetConnect(socket, &target, sizeof(target)); connect_result < 0)
+    const NetSockaddrIn target{
+        sizeof(NetSockaddrIn), 2, to_network16(config.port), to_ps5_ipv4(address), 0, {0}};
+    if (const int connect_result = sceNetConnect(socket, &target, sizeof(target));
+        connect_result < 0)
     {
         set_summary(result, "connect failed", connect_result);
         (void)sceNetSocketClose(socket);
@@ -95,10 +99,11 @@ ProbeResult run_probe(const Config &config) noexcept
     }
 
     std::array<char, 512> request{};
-    const int request_size = std::snprintf(request.data(), request.size(),
-                                          "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: PeacockPS5/0.1\r\n"
-                                          "Accept: application/json,*/*\r\nConnection: close\r\n\r\n",
-                                          config.path, config.host);
+    const int request_size =
+        std::snprintf(request.data(), request.size(),
+                      "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: PeacockPS5/0.1\r\n"
+                      "Accept: application/json,*/*\r\nConnection: close\r\n\r\n",
+                      config.path, config.host);
     if (request_size <= 0 || static_cast<std::size_t>(request_size) >= request.size() ||
         !send_all(socket, request.data(), static_cast<std::size_t>(request_size)))
     {
@@ -126,7 +131,8 @@ ProbeResult run_probe(const Config &config) noexcept
     if (std::sscanf(result.first_line, "HTTP/%*s %d", &result.status_code) == 1)
     {
         result.ok = result.status_code >= 200 && result.status_code < 500;
-        std::snprintf(result.summary, sizeof(result.summary), "HTTP probe received status %d", result.status_code);
+        std::snprintf(result.summary, sizeof(result.summary), "HTTP probe received status %d",
+                      result.status_code);
     }
     else
     {
@@ -134,8 +140,9 @@ ProbeResult run_probe(const Config &config) noexcept
     }
 
     char log_line[256]{};
-    std::snprintf(log_line, sizeof(log_line), "%s | %s:%u%s | %s", result.ok ? "OK" : "FAIL", config.host,
-                  static_cast<unsigned>(config.port), config.path, result.first_line);
+    std::snprintf(log_line, sizeof(log_line), "%s | %s:%u%s | %s",
+                  result.ok ? "OK" : "FAIL", config.host, static_cast<unsigned>(config.port),
+                  config.path, result.first_line);
     append_log(log_line);
     return result;
 }
