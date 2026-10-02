@@ -87,12 +87,11 @@ ProbeResult run_probe(const Config &config) noexcept
     for (const int option : {0x1105, 0x1106, 0x1109})
         (void)sceNetSetsockopt(socket, socket_level, option, &timeout_us, sizeof(timeout_us));
 
-    const NetSockaddrIn target{sizeof(NetSockaddrIn),
-                               2,
-                               to_network16(config.port),
-                               to_ps5_ipv4(address),
-                               0,
-                               {0}};
+    NetSockaddrIn target{};
+    target.length = sizeof(NetSockaddrIn);
+    target.family = 2;
+    target.port = to_network16(config.port);
+    target.address = to_ps5_ipv4(address);
     if (const int connect_result = sceNetConnect(socket, &target, sizeof(target));
         connect_result < 0)
     {
