@@ -20,21 +20,27 @@ zlib="$root/.deps/native/zlib/root/usr/include"
 
 mapfile -d '' host_sources < <(find "$root/tooling/native" -maxdepth 1 \
     -type f -name '*.cpp' ! -name 'app_crt.cpp' ! -name 'app_cpp_runtime.cpp' -print0)
-"$tidy" "${host_sources[@]}" --warnings-as-errors='*' -- \
-    -std=c++20 -I"$zlib"
+for source in "${host_sources[@]}"; do
+    "$tidy" "$source" --warnings-as-errors='*' -- \
+        -std=c++20 -I"$zlib" || { echo "clang-tidy failed for $source" >&2; exit 1; }
+done
 
 gtest=$(bash "$root/tools/setup-test-dependencies.sh")
 mapfile -d '' test_sources < <(find "$root/tests" -maxdepth 1 -type f -name '*.cpp' -print0)
 if (( ${#test_sources[@]} )); then
-    "$tidy" "${test_sources[@]}" --warnings-as-errors='*' -- \
-        -std=c++20 -I"$root/src" -isystem "$gtest/googletest/include" \
-        -idirafter "$sdk/target/include"
+    for source in "${test_sources[@]}"; do
+        "$tidy" "$source" --warnings-as-errors='*' -- \
+            -std=c++20 -I"$root/src" -isystem "$gtest/googletest/include" \
+            -idirafter "$sdk/target/include" || { echo "clang-tidy failed for $source" >&2; exit 1; }
+    done
 fi
 
 mapfile -d '' app_c_sources < <(find "$root/src" -type f -name '*.c' -print0)
 if (( ${#app_c_sources[@]} )); then
-    "$tidy" "${app_c_sources[@]}" --warnings-as-errors='*' -- \
-        -std=c11 -isystem "$sdk/target/include"
+    for source in "${app_c_sources[@]}"; do
+        "$tidy" "$source" --warnings-as-errors='*' -- \
+            -std=c11 -isystem "$sdk/target/include" || { echo "clang-tidy failed for $source" >&2; exit 1; }
+    done
 fi
 
 mapfile -d '' app_cpp_sources < <(find "$root/src" -type f \
@@ -48,7 +54,12 @@ fi
 app_cpp_sources+=("${example_cpp_sources[@]}")
 app_cpp_sources+=("$root/tooling/native/app_crt.cpp" "$root/tooling/native/app_cpp_runtime.cpp")
 if (( ${#app_cpp_sources[@]} )); then
-    "$tidy" "${app_cpp_sources[@]}" --warnings-as-errors='*' -- \
-        -std=c++20 -fno-exceptions -fno-rtti --target=x86_64-sie-ps5 \
-        -isystem "$sdk/target/include/c++/v1" -isystem "$sdk/target/include"
+    for source in "${app_cpp_sources[@]}"; do
+        "$tidy" "$source" --warnings-as-errors='*' -- \
+            -std=c++20 -fno-exceptions -fno-rtti --target=x86_64-sie-ps5 \
+            -isystem "$sdk/target/include/c++/v1" -isystem "$sdk/target/include" || {
+            echo "clang-tidy failed for $source" >&2
+            exit 1
+        }
+    done
 fi
