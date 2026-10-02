@@ -1,53 +1,28 @@
 # PeacockPS5
 
-PeacockPS5 is an early native PS5 homebrew prototype for testing whether a user-owned PS5 on a trusted LAN can reach a local [Peacock](https://github.com/thepeacockproject/Peacock) server instance. It is based on the public structure and tooling style of [blackbearreloaded/ps5-native-app-boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate).
+[![Build](https://github.com/Askabis/PeacockPS5/actions/workflows/tooling.yml/badge.svg)](https://github.com/Askabis/PeacockPS5/actions/workflows/tooling.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Askabis/PeacockPS5?display_name=tag)](https://github.com/Askabis/PeacockPS5/releases/latest)
 
-The current app does one thing: it loads `PEACOCK_HOST`-style configuration, opens a bounded TCP connection to the configured Peacock server, sends a simple HTTP GET, displays the first HTTP response line, and appends a local log under `/download0/peacock_probe.log`.
+**[Français](README.fr.md) | [English](README.en.md)**
 
-## Scope
+PeacockPS5 est une application homebrew PS5 native qui vérifie la connexion entre une console et une instance locale de [Peacock](https://github.com/thepeacockproject/Peacock) sur le même réseau.
 
-This repository is for lawful interoperability research with hardware and games controlled by the user.
+PeacockPS5 is a native PS5 homebrew application that checks connectivity between a console and a local [Peacock](https://github.com/thepeacockproject/Peacock) instance on the same network.
 
-It does not include a PS5 exploit chain, privilege-escalation helper, retail package signer, piracy workflow, HITMAN game patcher, firmware offset database, or code for modifying consoles that the user does not own or control.
+> Prototype actuel : test TCP/HTTP, affichage du résultat et journal local. Il ne redirige pas encore HITMAN vers Peacock.
+>
+> Current prototype: TCP/HTTP probe, on-screen result, and local log. It does not yet redirect HITMAN to Peacock.
 
-## Configuration
+## Installation
 
-The packaged default lives at:
+- **Français : [installer PeacockPS5 sur PS5](docs/INSTALLATION.fr.md)**
+- **English: [install PeacockPS5 on PS5](docs/INSTALLATION.en.md)**
 
-```text
-assets/peacock.conf
-```
+## Cadre / Scope
 
-Example:
+Projet destiné à l'interopérabilité légale sur du matériel et des jeux contrôlés par l'utilisateur. Aucun exploit PS5, contournement de protection, patch mémoire de jeu, outil de piratage ou package retail signé n'est fourni.
 
-```ini
-host=192.168.1.10
-port=80
-path=/authentication/api/configuration/Init
-timeout_ms=3000
-```
+For lawful interoperability research on hardware and games controlled by the user. No PS5 exploit, protection bypass, game-memory patcher, piracy tooling, or signed retail package is provided.
 
-On hardware, create `/download0/peacock.conf` with the same keys to override the packaged default without rebuilding the app.
-
-The first prototype intentionally expects an IPv4 LAN address, not a hostname. Start Peacock on the LAN host with a reachable bind address and port, then set `host` and `port` accordingly.
-
-## Build
-
-Use the same build flow as the upstream native app boilerplate:
-
-```bash
-make doctor
-make
-```
-
-The complete title directory is written to `dist/<TITLE_ID>/`, with archive output in `dist/<TITLE_ID>.zip`. Stage the whole title folder with your normal, legal homebrew deployment workflow.
-
-## Peacock Notes
-
-The working notes in [docs/PEACOCK_PROTOCOL_NOTES.md](docs/PEACOCK_PROTOCOL_NOTES.md) separate Peacock's server-side HTTP behavior from PeacockPatcher's desktop-specific process-memory patching.
-
-At this stage PeacockPS5 only probes server reachability. It does not attempt to make HITMAN on PS5 connect to Peacock.
-
-## Credits And License
-
-This project inherits the GPL-3.0-or-later native boilerplate foundation and clean-room runtime tooling from `ps5-native-app-boilerplate`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSE](LICENSE).
+GPL-3.0-or-later. Voir / See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
