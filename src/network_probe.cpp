@@ -87,8 +87,12 @@ ProbeResult run_probe(const Config &config) noexcept
     for (const int option : {0x1105, 0x1106, 0x1109})
         (void)sceNetSetsockopt(socket, socket_level, option, &timeout_us, sizeof(timeout_us));
 
-    const NetSockaddrIn target{
-        sizeof(NetSockaddrIn), 2, to_network16(config.port), to_ps5_ipv4(address), 0, {0}};
+    const NetSockaddrIn target{sizeof(NetSockaddrIn),
+                               2,
+                               to_network16(config.port),
+                               to_ps5_ipv4(address),
+                               0,
+                               {0}};
     if (const int connect_result = sceNetConnect(socket, &target, sizeof(target));
         connect_result < 0)
     {
@@ -140,9 +144,8 @@ ProbeResult run_probe(const Config &config) noexcept
     }
 
     char log_line[256]{};
-    std::snprintf(log_line, sizeof(log_line), "%s | %s:%u%s | %s",
-                  result.ok ? "OK" : "FAIL", config.host, static_cast<unsigned>(config.port),
-                  config.path, result.first_line);
+    std::snprintf(log_line, sizeof(log_line), "%s | %s:%u%s | %s", result.ok ? "OK" : "FAIL",
+                  config.host, static_cast<unsigned>(config.port), config.path, result.first_line);
     append_log(log_line);
     return result;
 }
