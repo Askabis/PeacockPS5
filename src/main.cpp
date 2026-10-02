@@ -1,5 +1,6 @@
 /*
  * PeacockPS5 - Local Peacock connectivity probe.
+ * Copyright (C) 2026 Askabis
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Builds a sandboxed native PS5 app that checks whether a user-owned console

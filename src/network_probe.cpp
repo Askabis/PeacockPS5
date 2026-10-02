@@ -1,3 +1,9 @@
+/*
+ * PeacockPS5 - Network probe implementation.
+ * Copyright (C) 2026 Askabis
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #include "network_probe.hpp"
 
 #include "probe_log.hpp"

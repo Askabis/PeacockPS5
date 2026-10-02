@@ -1,4 +1,9 @@
 #pragma once
+/*
+ * PeacockPS5 - Network probe interface.
+ * Copyright (C) 2026 Askabis
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #include "peacock_config.hpp"
 

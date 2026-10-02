@@ -1,3 +1,9 @@
+/*
+ * PeacockPS5 - Probe logging.
+ * Copyright (C) 2026 Askabis
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #include "probe_log.hpp"
 
 #include <cstdio>
