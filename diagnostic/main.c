@@ -141,6 +141,46 @@ int main(void)
         fprintf(log, "marker %zu MATCH\n", i);
     }
     fprintf(log, "READ_PROBE_OK; not authentication, not full build verification\n");
+    const struct
+    {
+        intptr_t offset;
+        size_t size;
+    } regions[] = {
+        {0xcd6180, 0x2b0}, {0xcd6430, 0x132}, {0xcd6562, 0x112},
+        {0xcf9609, 0x95},  {0xd1be8a, 0x8aa},
+    };
+    FILE *snapshot = fopen("/data/peacockps5/auth-code-v1.bin", "wb");
+    if (snapshot == NULL)
+    {
+        fprintf(log, "STOP: cannot create code snapshot\n");
+        fclose(log);
+        return 1;
+    }
+    /* Fixed executable regions only. No object data, credentials, or tokens.
+     * This does not pause the target; it is not an atomic process snapshot.
+     */
+    for (size_t i = 0; i < sizeof(regions) / sizeof(regions[0]); ++i)
+    {
+        unsigned char code[4096] = {0};
+        if (regions[i].size > sizeof(code) || !is_hitman(pid) ||
+            kernel_dynlib_mapbase_addr(pid, 0) != base ||
+            mdbg_copyout(pid, base + regions[i].offset, code, regions[i].size) != 0 ||
+            fwrite(code, 1, regions[i].size, snapshot) != regions[i].size)
+        {
+            fprintf(log, "STOP: code region %zu read/write failed\n", i);
+            fclose(snapshot);
+            fclose(log);
+            return 1;
+        }
+        fprintf(log, "code region %zu collected (%zu bytes)\n", i, regions[i].size);
+    }
+    if (fclose(snapshot) != 0)
+    {
+        fprintf(log, "STOP: snapshot flush failed\n");
+        fclose(log);
+        return 1;
+    }
+    fprintf(log, "CODE_SNAPSHOT_V1_OK; compare locally before drawing conclusions\n");
     fclose(log);
     return 0;
 }
