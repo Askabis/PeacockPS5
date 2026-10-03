@@ -46,8 +46,7 @@ void peacock_daemon_config_defaults(peacock_daemon_config_t *config)
     memset(config, 0, sizeof(*config));
     snprintf(config->host, sizeof(config->host), "%s", "192.168.1.10");
     config->port = 80;
-    snprintf(config->path, sizeof(config->path), "%s",
-             "/authentication/api/configuration/Init");
+    snprintf(config->path, sizeof(config->path), "%s", "/authentication/api/configuration/Init");
     config->interval_seconds = 15;
 }
 

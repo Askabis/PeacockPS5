@@ -22,8 +22,7 @@ typedef struct notify_request
     char message[3075];
 } notify_request_t;
 
-int sceKernelSendNotificationRequest(int device, notify_request_t *request, size_t size,
-                                     int flags);
+int sceKernelSendNotificationRequest(int device, notify_request_t *request, size_t size, int flags);
 int sceNetInit(void);
 int sceNetPoolCreate(const char *name, int size, int flags);
 int sceNetPoolDestroy(int pool_id);
@@ -98,8 +97,7 @@ static int http_runtime_init(http_runtime_t *runtime)
     runtime->ssl_context = sceSslInit(128 * 1024);
     if (runtime->ssl_context < 0)
         return -1;
-    runtime->http_context =
-        sceHttp2Init(runtime->net_pool, runtime->ssl_context, 128 * 1024, 1);
+    runtime->http_context = sceHttp2Init(runtime->net_pool, runtime->ssl_context, 128 * 1024, 1);
     if (runtime->http_context < 0)
         return -1;
     runtime->template_id =
@@ -125,8 +123,8 @@ static int probe(http_runtime_t *runtime, const peacock_daemon_config_t *config)
     int request_id = -1;
     int status_code = 0;
 
-    if (snprintf(url, sizeof(url), "http://%s:%u%s", config->host,
-                 (unsigned int)config->port, config->path) >= (int)sizeof(url))
+    if (snprintf(url, sizeof(url), "http://%s:%u%s", config->host, (unsigned int)config->port,
+                 config->path) >= (int)sizeof(url))
         return -1;
     request_id = sceHttp2CreateRequestWithURL(runtime->template_id, "GET", url, 0);
     if (request_id < 0)
