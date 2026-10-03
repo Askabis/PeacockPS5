@@ -9,7 +9,8 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 bash "$root/tools/setup-native-dependencies.sh" >/dev/null
 sdk="$root/.deps/native/ps5-payload-sdk"
 
-make -C "$root/daemon" --no-print-directory clean
+make -C "$root/daemon" --no-print-directory clean \
+    PS5_PAYLOAD_SDK="$sdk"
 make -C "$root/daemon" --no-print-directory \
     PS5_PAYLOAD_SDK="$sdk" \
     PS5_CLANG="${PS5_CLANG:-$(command -v clang-18 || command -v clang)}"
