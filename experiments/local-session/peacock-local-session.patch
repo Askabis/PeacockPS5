@@ -1,0 +1,594 @@
+diff --git a/components/localSession.ts b/components/localSession.ts
+new file mode 100644
+index 0000000..d8fd673
+--- /dev/null
++++ b/components/localSession.ts
+@@ -0,0 +1,142 @@
++// Experimental PeacockPS5 local sessions. Copyright (C) 2026 Askabis
++// SPDX-License-Identifier: AGPL-3.0-or-later
++import { createHash, randomBytes, timingSafeEqual } from "crypto"
++import { decode, sign, verify, type JwtPayload } from "jsonwebtoken"
++
++export const LOCAL_GRANT = "peacock_local"
++const ISSUER = "peacock-local"
++const AUDIENCE = "peacock-local-research"
++const PROFILE_ID =
++    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
++
++export type LocalSessionConfig = { pairingKey: string; profileId: string }
++
++export function localSessionConfig(
++    env: NodeJS.ProcessEnv,
++): LocalSessionConfig | undefined {
++    if (env.PEACOCK_LOCAL_SESSION !== "1") return undefined
++    const pairingKey = env.PEACOCK_LOCAL_PAIRING_KEY || ""
++    const profileId = env.PEACOCK_LOCAL_PROFILE_ID || ""
++
++    if (!/^[0-9a-f]{64}$/.test(pairingKey) || !PROFILE_ID.test(profileId)) {
++        throw new Error(
++            "Invalid local-session configuration; use a dedicated UUID v4 and a 32-byte lowercase hex pairing key",
++        )
++    }
++
++    return { pairingKey, profileId }
++}
++
++function hash(value: string): Buffer {
++    return createHash("sha256").update(value).digest()
++}
++
++export function isLoopback(address: string | undefined): boolean {
++    return (
++        address === "127.0.0.1" ||
++        address === "::1" ||
++        address === "::ffff:127.0.0.1"
++    )
++}
++
++export function isLocalToken(
++    token: string,
++    profileId = process.env.PEACOCK_LOCAL_PROFILE_ID,
++): boolean {
++    const claims = decode(token)
++    return (
++        !!claims &&
++        typeof claims === "object" &&
++        (claims["auth:method"] === LOCAL_GRANT ||
++            claims.platform === "peacock_local" ||
++            claims.iss === ISSUER ||
++            (!!profileId &&
++                (claims.sub === profileId || claims.unique_name === profileId)))
++    )
++}
++
++export class LocalSession {
++    private readonly signingKey = randomBytes(32)
++    private refreshHash: Buffer | undefined
++    private refreshExpires = 0
++
++    constructor(readonly config: LocalSessionConfig) {}
++
++    isCandidate(token: string): boolean {
++        return isLocalToken(token, this.config.profileId)
++    }
++
++    verifyAccess(token: string, refreshing = false): JwtPayload {
++        const claims = verify(token, this.signingKey, {
++            algorithms: ["HS256"],
++            issuer: ISSUER,
++            audience: AUDIENCE,
++            ignoreExpiration: refreshing,
++        })
++        if (
++            typeof claims === "string" ||
++            claims.sub !== this.config.profileId ||
++            claims.unique_name !== this.config.profileId ||
++            claims["auth:method"] !== LOCAL_GRANT ||
++            claims.platform !== "peacock_local"
++        )
++            throw new Error("Invalid local session")
++        return claims
++    }
++
++    pair(key: unknown): boolean {
++        return (
++            typeof key === "string" &&
++            /^[0-9a-f]{64}$/.test(key) &&
++            timingSafeEqual(hash(key), hash(this.config.pairingKey))
++        )
++    }
++
++    issue() {
++        const refresh = randomBytes(32).toString("hex")
++        this.refreshHash = hash(refresh)
++        this.refreshExpires = Date.now() + 3600000
++        return {
++            access_token: sign(
++                {
++                    "auth:method": LOCAL_GRANT,
++                    roles: "user",
++                    sub: this.config.profileId,
++                    unique_name: this.config.profileId,
++                    userid: this.config.profileId,
++                    platform: "peacock_local",
++                    locale: "en",
++                    rgn: "xx",
++                    cntry: "xx",
++                    pis: "peacock-local-research",
++                },
++                this.signingKey,
++                {
++                    algorithm: "HS256",
++                    issuer: ISSUER,
++                    audience: AUDIENCE,
++                    expiresIn: 300,
++                },
++            ),
++            token_type: "bearer",
++            expires_in: 300,
++            refresh_token: refresh,
++        }
++    }
++
++    refresh(access: string, refresh: unknown) {
++        this.verifyAccess(access, true)
++        if (
++            typeof refresh !== "string" ||
++            !/^[0-9a-f]{64}$/.test(refresh) ||
++            !this.refreshHash ||
++            Date.now() >= this.refreshExpires ||
++            !timingSafeEqual(hash(refresh), this.refreshHash)
++        )
++            throw new Error("Invalid local refresh")
++        return this.issue()
++    }
++}
++
++const config = localSessionConfig(process.env)
++export const localSession = config ? new LocalSession(config) : undefined
+diff --git a/components/oauthToken.ts b/components/oauthToken.ts
+index a801abe..2f7701f 100644
+--- a/components/oauthToken.ts
++++ b/components/oauthToken.ts
+@@ -45,6 +45,12 @@ import {
+     SteamScpcStrategy,
+ } from "./entitlementStrategies"
+ import { getFlag } from "./flags"
++import {
++    isLocalToken,
++    isLoopback,
++    LOCAL_GRANT,
++    localSession,
++} from "./localSession"
+ 
+ export const JWT_SECRET = PEACOCK_DEV
+     ? "secret"
+@@ -55,7 +61,9 @@ export type OAuthTokenBody = {
+         | "external_steam"
+         | "external_epic"
+         | "external_apple"
++        | "peacock_local"
+         | "refresh_token"
++    refresh_token?: string
+     steam_userid?: string
+     steam_clienttoken?: string
+     steam_identity?: string
+@@ -94,6 +102,58 @@ export async function handleOAuthToken(
+ ): Promise<
+     typeof error400 | typeof error406 | typeof error410 | OAuthTokenResponse
+ > {
++    const localAccess = (req.header("Authorization") || "").replace(
++        /^Bearer /i,
++        "",
++    )
++
++    if (
++        req.body.grant_type === LOCAL_GRANT ||
++        (req.body.grant_type === "refresh_token" && isLocalToken(localAccess))
++    ) {
++        // Research adapter: not reachable from the LAN until the client protocol is validated.
++        if (!localSession || !isLoopback(req.socket?.remoteAddress))
++            return error406
++
++        if (req.body.grant_type === "refresh_token") {
++            try {
++                return localSession.refresh(localAccess, req.body.refresh_token)
++            } catch {
++                return error400
++            }
++        }
++
++        if (!localSession.pair(req.header("X-Peacock-Local-Key")))
++            return error400
++        const profileId = localSession.config.profileId
++        if (req.body.pId && req.body.pId !== profileId) return error410
++        let profile: UserProfile
++
++        try {
++            profile = await loadUserData(profileId, "h3")
++            if (profile.LinkedAccounts.peacock_local !== profileId)
++                return error410
++        } catch (error) {
++            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
++            profile = getVersionedConfig(
++                "UserDefault",
++                "h3",
++                true,
++            ) as UserProfile
++            profile.Id = profileId
++            profile.LinkedAccounts = { peacock_local: profileId }
++            // Local identity is not evidence of ownership. Never invent DLC entitlements.
++            profile.Extensions.entP = []
++            writeNewUserData(profileId, profile, "h3")
++        }
++
++        controller.inventoryService.clearInventoryFor(profileId)
++        return localSession.issue()
++    }
++
++    if (req.body.pId && req.body.pId === process.env.PEACOCK_LOCAL_PROFILE_ID)
++        return error410
++
+     const isScpc = req.body.gs === "scpc-prod"
+ 
+     const signOptions = {
+diff --git a/components/types/types.ts b/components/types/types.ts
+index 74b9c79..0746314 100644
+--- a/components/types/types.ts
++++ b/components/types/types.ts
+@@ -80,7 +80,7 @@ export interface JwtData {
+     /**
+      * Either "steam" or "epic" on PC.
+      */
+-    platform: "steam" | "epic"
++    platform: "steam" | "epic" | "peacock_local"
+     /**
+      * Client/account locale.
+      */
+@@ -476,6 +476,7 @@ export type ProgressionData = {
+ export type UserProfile = {
+     Id: string
+     LinkedAccounts: {
++        peacock_local?: string
+         dev?: string
+         epic?: string
+         steam?: string
+diff --git a/components/utils.ts b/components/utils.ts
+index 9418572..f6422e3 100644
+--- a/components/utils.ts
++++ b/components/utils.ts
+@@ -37,6 +37,7 @@ import { getConfig, getVersionedConfig } from "./configSwizzleManager"
+ import { compare } from "semver"
+ import assert from "assert"
+ import { createHash, createVerify } from "crypto"
++import { isLocalToken, isLoopback, localSession } from "./localSession"
+ 
+ /**
+  * Logs a deprecation warning.
+@@ -158,6 +159,29 @@ export function extractToken(
+     const auth = header ? header.split(" ") : []
+ 
+     if (auth.length === 2 && auth[0].toLowerCase() === "bearer") {
++        if (isLocalToken(auth[1])) {
++            try {
++                if (!localSession || !isLoopback(req.socket?.remoteAddress))
++                    throw new Error("Local research only")
++                req.jwt = localSession.verifyAccess(
++                    auth[1],
++                ) as unknown as RequestWithJwt["jwt"]
++            } catch {
++                req.shouldCease = true
++
++                if (res) {
++                    res.status(401).send()
++                    return
++                }
++
++                next?.("router")
++                return
++            }
++
++            next?.()
++            return
++        }
++
+         // @ts-expect-error Type overlap
+         req.jwt = <string>decode(auth[1])
+ 
+diff --git a/tests/src/localOAuth.test.ts b/tests/src/localOAuth.test.ts
+new file mode 100644
+index 0000000..1dd3894
+--- /dev/null
++++ b/tests/src/localOAuth.test.ts
+@@ -0,0 +1,137 @@
++// Experimental PeacockPS5 local sessions. Copyright (C) 2026 Askabis
++// SPDX-License-Identifier: AGPL-3.0-or-later
++import { beforeEach, describe, expect, it, vi } from "vitest"
++
++const settings = vi.hoisted(() => {
++    const profile = "12345678-1234-4234-8234-123456789abc"
++    const key = "ab".repeat(32)
++    process.env.PEACOCK_LOCAL_SESSION = "1"
++    process.env.PEACOCK_LOCAL_PROFILE_ID = profile
++    process.env.PEACOCK_LOCAL_PAIRING_KEY = key
++    return { profile, key }
++})
++vi.mock("../../components/officialServerAuth", () => ({
++    OfficialServerAuth: vi.fn(() => {
++        throw new Error("External authentication forbidden in local test")
++    }),
++    userAuths: new Map(),
++}))
++import { OfficialServerAuth } from "../../components/officialServerAuth"
++import {
++    error400,
++    error406,
++    error410,
++    handleOAuthToken,
++    type OAuthTokenBody,
++    type OAuthTokenResponse,
++} from "../../components/oauthToken"
++import * as database from "../../components/databaseHandler"
++import * as configs from "../../components/configSwizzleManager"
++import { extractToken } from "../../components/utils"
++import { localSession } from "../../components/localSession"
++import { mockRequestWithJwt } from "../helpers/testHelpers"
++import type { UserProfile } from "../../components/types/types"
++import type { Response } from "express"
++
++function request(address = "127.0.0.1") {
++    const req = mockRequestWithJwt<never, OAuthTokenBody>()
++    req.body = { grant_type: "peacock_local" } as OAuthTokenBody
++    req.headers["x-peacock-local-key"] = settings.key
++    Object.defineProperty(req, "socket", { value: { remoteAddress: address } })
++    return req
++}
++
++describe("Peacock local OAuth adapter", () => {
++    beforeEach(() => {
++        vi.restoreAllMocks()
++        vi.spyOn(database, "loadUserData").mockResolvedValue({
++            Id: settings.profile,
++            LinkedAccounts: { peacock_local: settings.profile },
++            Extensions: { entP: [] },
++        } as unknown as UserProfile)
++        vi.spyOn(database, "writeNewUserData").mockImplementation(
++            () => undefined,
++        )
++    })
++    it("creates a local session without official authentication", async () => {
++        const result = (await handleOAuthToken(request())) as OAuthTokenResponse
++        expect(localSession!.verifyAccess(result.access_token).sub).toBe(
++            settings.profile,
++        )
++        expect(OfficialServerAuth).not.toHaveBeenCalled()
++        expect(database.writeNewUserData).not.toHaveBeenCalled()
++    })
++    it("rejects the LAN and wrong pairing key before loading profiles", async () => {
++        expect(await handleOAuthToken(request("192.168.1.8"))).toBe(error406)
++        const req = request()
++        req.headers["x-peacock-local-key"] = "wrong"
++        expect(await handleOAuthToken(req)).toBe(error400)
++        expect(database.loadUserData).not.toHaveBeenCalled()
++    })
++    it("does not treat PSN as a local login", async () => {
++        const req = request()
++        req.body.grant_type = "external_psn" as OAuthTokenBody["grant_type"]
++        expect(await handleOAuthToken(req)).toBe(error406)
++        expect(OfficialServerAuth).not.toHaveBeenCalled()
++    })
++    it("never overwrites a profile from another platform", async () => {
++        vi.mocked(database.loadUserData).mockResolvedValue({
++            LinkedAccounts: { steam: "existing" },
++        } as UserProfile)
++        expect(await handleOAuthToken(request())).toBe(error410)
++        expect(database.writeNewUserData).not.toHaveBeenCalled()
++    })
++    it("creates new profiles without invented entitlements", async () => {
++        vi.mocked(database.loadUserData).mockRejectedValue(
++            Object.assign(new Error("Missing"), { code: "ENOENT" }),
++        )
++        vi.spyOn(configs, "getVersionedConfig").mockReturnValue({
++            LinkedAccounts: {},
++            Extensions: { entP: ["not-owned"] },
++        })
++        const result = (await handleOAuthToken(request())) as OAuthTokenResponse
++        expect(result.access_token).toBeTruthy()
++        const profile = vi.mocked(database.writeNewUserData).mock.calls[0][1]
++        expect(profile.Extensions.entP).toEqual([])
++        expect(profile.LinkedAccounts).toEqual({
++            peacock_local: settings.profile,
++        })
++    })
++    it("does not replace corrupt profiles", async () => {
++        vi.mocked(database.loadUserData).mockRejectedValue(
++            new SyntaxError("Corrupt profile"),
++        )
++        await expect(handleOAuthToken(request())).rejects.toThrow(
++            "Corrupt profile",
++        )
++        expect(database.writeNewUserData).not.toHaveBeenCalled()
++    })
++    it("refreshes through the local adapter only", async () => {
++        const token = (await handleOAuthToken(request())) as OAuthTokenResponse
++        const req = request()
++        req.body = {
++            grant_type: "refresh_token",
++            refresh_token: token.refresh_token,
++        } as OAuthTokenBody
++        req.headers.authorization = `Bearer ${token.access_token}`
++        expect(
++            ((await handleOAuthToken(req)) as OAuthTokenResponse).refresh_token,
++        ).not.toBe(token.refresh_token)
++        expect(await handleOAuthToken(req)).toBe(error400)
++        expect(OfficialServerAuth).not.toHaveBeenCalled()
++    })
++    it("checks local signatures in the normal request middleware", () => {
++        const req = request()
++        req.headers.authorization = `Bearer ${localSession!.issue().access_token}`
++        const next = vi.fn()
++        extractToken(req, undefined, next)
++        expect(req.jwt.unique_name).toBe(settings.profile)
++        expect(next).toHaveBeenCalledWith()
++        req.headers.authorization += "tampered"
++        const response = { status: vi.fn().mockReturnThis(), send: vi.fn() }
++        const rejectedNext = vi.fn()
++        extractToken(req, response as unknown as Response, rejectedNext)
++        expect(response.status).toHaveBeenCalledWith(401)
++        expect(rejectedNext).not.toHaveBeenCalled()
++    })
++})
+diff --git a/tests/src/localSession.test.ts b/tests/src/localSession.test.ts
+new file mode 100644
+index 0000000..9d5dfa2
+--- /dev/null
++++ b/tests/src/localSession.test.ts
+@@ -0,0 +1,124 @@
++// Experimental PeacockPS5 local sessions. Copyright (C) 2026 Askabis
++// SPDX-License-Identifier: AGPL-3.0-or-later
++import { afterEach, describe, expect, it, vi } from "vitest"
++import { sign } from "jsonwebtoken"
++import {
++    isLocalToken,
++    isLoopback,
++    LocalSession,
++    localSessionConfig,
++} from "../../components/localSession"
++
++const config = {
++    pairingKey: "ab".repeat(32),
++    profileId: "12345678-1234-4234-8234-123456789abc",
++}
++afterEach(() => vi.useRealTimers())
++
++describe("local sessions", () => {
++    it("is disabled unless explicitly configured", () => {
++        expect(localSessionConfig({})).toBeUndefined()
++        expect(
++            localSessionConfig({ PEACOCK_LOCAL_SESSION: "0" }),
++        ).toBeUndefined()
++        expect(() =>
++            localSessionConfig({ PEACOCK_LOCAL_SESSION: "1" }),
++        ).toThrow()
++    })
++    it("validates configuration without echoing secrets", () => {
++        expect(
++            localSessionConfig({
++                PEACOCK_LOCAL_SESSION: "1",
++                PEACOCK_LOCAL_PAIRING_KEY: config.pairingKey,
++                PEACOCK_LOCAL_PROFILE_ID: config.profileId,
++            }),
++        ).toEqual(config)
++        expect(() =>
++            localSessionConfig({
++                PEACOCK_LOCAL_SESSION: "1",
++                PEACOCK_LOCAL_PAIRING_KEY: "invalid-secret",
++            }),
++        ).toThrow("Invalid local-session configuration")
++    })
++    it("accepts only exact loopback socket addresses", () => {
++        for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1"])
++            expect(isLoopback(address)).toBe(true)
++        for (const address of [
++            undefined,
++            "192.168.1.8",
++            "127.0.0.1.evil",
++            "8.8.8.8",
++        ])
++            expect(isLoopback(address)).toBe(false)
++    })
++    it("requires the pairing key", () => {
++        const session = new LocalSession(config)
++        expect(session.pair(config.pairingKey)).toBe(true)
++        for (const key of [undefined, "", [], "cd".repeat(32)])
++            expect(session.pair(key)).toBe(false)
++    })
++    it("issues a locally signed identity without platform credentials", () => {
++        const session = new LocalSession(config)
++        const token = session.issue()
++        const claims = session.verifyAccess(token.access_token)
++        expect(claims.sub).toBe(config.profileId)
++        expect(claims.platform).toBe("peacock_local")
++        expect(claims.aud).toBe("peacock-local-research")
++        expect(claims).not.toHaveProperty("authcode")
++        expect(JSON.stringify(token)).not.toContain(config.pairingKey)
++    })
++    it("rejects forged tokens even with a known pairing key", () => {
++        const session = new LocalSession(config)
++        const token = sign(
++            { sub: config.profileId, "auth:method": "peacock_local" },
++            config.pairingKey,
++        )
++        expect(session.isCandidate(token)).toBe(true)
++        expect(isLocalToken(token)).toBe(true)
++        expect(() => session.verifyAccess(token)).toThrow()
++    })
++    it("rejects a different instance's signature", () => {
++        const session = new LocalSession(config)
++        expect(() =>
++            session.verifyAccess(new LocalSession(config).issue().access_token),
++        ).toThrow()
++    })
++    it("rotates refresh credentials and rejects replay", () => {
++        const session = new LocalSession(config)
++        const first = session.issue()
++        const second = session.refresh(first.access_token, first.refresh_token)
++        expect(second.refresh_token).not.toBe(first.refresh_token)
++        expect(() =>
++            session.refresh(first.access_token, first.refresh_token),
++        ).toThrow()
++        expect(() =>
++            session.refresh(second.access_token, "ef".repeat(32)),
++        ).toThrow()
++    })
++    it("expires access but allows refresh within one hour", () => {
++        vi.useFakeTimers()
++        const session = new LocalSession(config)
++        const first = session.issue()
++        vi.advanceTimersByTime(301000)
++        expect(() => session.verifyAccess(first.access_token)).toThrow()
++        expect(
++            session.refresh(first.access_token, first.refresh_token)
++                .access_token,
++        ).toBeTruthy()
++    })
++    it("expires refresh and invalidates it after restart", () => {
++        vi.useFakeTimers()
++        const session = new LocalSession(config)
++        const first = session.issue()
++        expect(() =>
++            new LocalSession(config).refresh(
++                first.access_token,
++                first.refresh_token,
++            ),
++        ).toThrow()
++        vi.advanceTimersByTime(3600000)
++        expect(() =>
++            session.refresh(first.access_token, first.refresh_token),
++        ).toThrow()
++    })
++})
+diff --git a/tests/src/oauthToken.test.ts b/tests/src/oauthToken.test.ts
+index 0923620..7820a73 100644
+--- a/tests/src/oauthToken.test.ts
++++ b/tests/src/oauthToken.test.ts
+@@ -214,4 +214,19 @@ describe("oauthToken", () => {
+ 
+         expect(res).toEqual(error406)
+     })
++
++    it("does not enable the local research grant by default", async () => {
++        const request = mockRequestWithJwt<never, any>()
++        request.body = { grant_type: "peacock_local" }
++        Object.defineProperty(request, "socket", {
++            value: { remoteAddress: "127.0.0.1" },
++        })
++        expect(await handleOAuthToken(request)).toBe(error406)
++    })
++
++    it("keeps external_psn unsupported", async () => {
++        const request = mockRequestWithJwt<never, any>()
++        request.body = { grant_type: "external_psn" }
++        expect(await handleOAuthToken(request)).toBe(error406)
++    })
+ })
