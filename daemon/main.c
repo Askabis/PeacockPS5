@@ -111,11 +111,11 @@ static int http_runtime_init(http_runtime_t *runtime)
     log_stage("sceNetPoolCreate", runtime->net_pool);
     if (runtime->net_pool < 0)
         return -1;
-    runtime->ssl_context = sceSslInit(128 * 1024);
+    runtime->ssl_context = sceSslInit(256 * 1024);
     log_stage("sceSslInit", runtime->ssl_context);
     if (runtime->ssl_context < 0)
         return -1;
-    runtime->http_context = sceHttp2Init(runtime->net_pool, runtime->ssl_context, 128 * 1024, 1);
+    runtime->http_context = sceHttp2Init(runtime->net_pool, runtime->ssl_context, 256 * 1024, 1);
     log_stage("sceHttp2Init", runtime->http_context);
     if (runtime->http_context < 0)
         return -1;
