@@ -21,6 +21,14 @@ Ne jamais le publier. Les cinq empreintes SHA-256 attendues ont ete calculees
 sur la copie locale analysee. Toute difference ou taille incorrecte est un echec.
 La lecture ne suspend pas le jeu et ne constitue pas un instantane atomique.
 
+Le diagnostic releve aussi deux fois, a une seconde d'intervalle, certains
+champs de l'objet de gestion en ligne (`STATE_V1`). Deux instructions sont
+verifiees avant de lire cet objet. Seuls l'etat, trois indicateurs et les
+champs d'erreur sont lus, jamais les tampons de compte ou d'authcode. Le
+pointeur de message n'est pas dereference : il est compare a une liste de
+messages statiques connus. Un resultat inconnu reste inconnu ; ces champs
+ne prouvent pas a eux seuls quel appel vient d'echouer.
+
 `READ_PROBE_OK` signifie uniquement que les trois marqueurs ont ete lus.
 Un message `STOP` interdit de poursuivre avec des hypotheses sur les adresses.
 Le journal est remplace a chaque execution. Aucun identifiant PSN, jeton ou
@@ -54,6 +62,11 @@ the repository and run `python tools/verify-hitman-snapshot.py PATH/auth-code-v1
 This 3,635-byte executable-code snapshot must never be published. The verifier
 rejects incorrect length or SHA-256 hashes. Reads are not atomic and do not
 prove execution, full-build identity, or successful authentication.
+
+`STATE_V1` additionally samples selected online-manager state/error fields
+twice. Two code references are checked first. Account and authcode buffers
+are excluded; error-message pointers are only compared against known static
+addresses, never dereferenced. Unknown results are not interpreted as success.
 
 Build with the manual **Read-only diagnostic** workflow. No game binary is
 included. The regular connectivity daemon is unchanged.

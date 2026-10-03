@@ -33,6 +33,69 @@ static int is_hitman(pid_t pid)
            memcmp(info.title_id, "PPSA01769", sizeof("PPSA01769")) == 0;
 }
 
+static int read_error_state(FILE *log, pid_t pid, intptr_t base)
+{
+    const unsigned char refs[2][7] = {
+        {0x48, 0x8d, 0x3d, 0x5f, 0x36, 0x01, 0x03},
+        {0x48, 0x8d, 0x3d, 0x56, 0x35, 0x01, 0x03},
+    };
+    const intptr_t sites[2] = {0xcda67a, 0xcda783};
+    for (size_t i = 0; i < 2; ++i)
+    {
+        unsigned char actual[7] = {0};
+        if (mdbg_copyout(pid, base + sites[i], actual, sizeof(actual)) != 0 ||
+            memcmp(actual, refs[i], sizeof(actual)) != 0)
+        {
+            fprintf(log, "STATE_STOP: singleton reference mismatch\n");
+            return -1;
+        }
+    }
+    /* Both validated RIP-relative references resolve to this object.
+     * Read only selected state fields, never the authcode/account buffers.
+     */
+    if (base > INTPTR_MAX - 0x3cee580)
+        return -1;
+    const intptr_t object = base + 0x3cedce0;
+    uint32_t state = 0, text_meta = 0;
+    uint64_t error = 0, text_ptr = 0;
+    unsigned char flags[3] = {0};
+    if (!is_hitman(pid) || kernel_dynlib_mapbase_addr(pid, 0) != base ||
+        mdbg_copyout(pid, object + 0x580, &state, sizeof(state)) != 0 ||
+        mdbg_copyout(pid, object + 0x5c8, &error, sizeof(error)) != 0 ||
+        mdbg_copyout(pid, object + 0x5d0, &text_meta, sizeof(text_meta)) != 0 ||
+        mdbg_copyout(pid, object + 0x5d8, &text_ptr, sizeof(text_ptr)) != 0 ||
+        mdbg_copyout(pid, object + 0x895, flags, sizeof(flags)) != 0)
+    {
+        fprintf(log, "STATE_STOP: read failed\n");
+        return -1;
+    }
+    fprintf(log,
+            "STATE_V1 state_580=%" PRIu32 " error_5c8=%" PRIx64 " text_meta=%" PRIx32
+            " flags_895_897=%u,%u,%u\n",
+            state, error, text_meta, (unsigned)flags[0], (unsigned)flags[1], (unsigned)flags[2]);
+    const struct
+    {
+        uintptr_t address;
+        const char *label;
+    } messages[] = {
+        {0x2113fdc, "Authenticating RequestAuthCode"},
+        {0x2170e4b, "Authenticating emptyCode"},
+        {0x212ff7f, "Authenticate sceNpGetOnlineId"},
+        {0x21587e4, "Authenticate sceNpGetAccountId"},
+        {0x2170e77, "PollNpCheckRequest sceNpGetOnlineId"},
+        {0x2184a6e, "PollPSNSigninDialog sceNpGetOnlineId"},
+    };
+    const char *label = "UNKNOWN_OR_NONSTATIC (not dereferenced)";
+    for (size_t i = 0; i < sizeof(messages) / sizeof(messages[0]); ++i)
+    {
+        if (text_ptr == (uintptr_t)base + messages[i].address)
+            label = messages[i].label;
+    }
+    fprintf(log, "STATE_V1 known_error=%s\n", label);
+    fprintf(log, "STATE_V1 is a non-atomic observation, not a proven last failure\n");
+    return 0;
+}
+
 static pid_t find_game(FILE *log)
 {
     int mib[4] = {1, 14, 8, 0};
@@ -181,6 +244,17 @@ int main(void)
         return 1;
     }
     fprintf(log, "CODE_SNAPSHOT_V1_OK; compare locally before drawing conclusions\n");
+    for (unsigned sample = 0; sample < 2; ++sample)
+    {
+        fprintf(log, "STATE_SAMPLE %u\n", sample);
+        if (read_error_state(log, pid, base) != 0)
+        {
+            fclose(log);
+            return 1;
+        }
+        if (sample == 0)
+            sleep(1);
+    }
     fclose(log);
     return 0;
 }
