@@ -50,10 +50,14 @@ RUNTIME_INPUTS := tools/rebuild-libc.sh tools/build-host-tools.sh tools/ninja-bu
 	$(wildcard tooling/native/runtime/*.txt)
 HOST_UNIT_TEST := build/tests/demo_renderer_tests
 
-.PHONY: all app build init doctor test test-deps test-unit test-integration libc deps pacbrew pacbrew-list assets-check format format-check tidy lint check ffpkg ffpfsc packages deploy undeploy clean distclean help
+.PHONY: all app build daemon init doctor test test-deps test-unit test-integration libc deps pacbrew pacbrew-list assets-check format format-check tidy lint check ffpkg ffpfsc packages deploy undeploy clean distclean help
 
 all: app
 build: app
+
+daemon:
+	@printf '%s\n' '==> [daemon] Building the resident Peacock connectivity payload'
+	@bash tools/build-daemon.sh
 
 init:
 	@printf '%s\n' '==> [init] Configuring the application identity in sce_sys/param.json'
@@ -143,12 +147,13 @@ lint:
 	@printf '%s\n' '==> [lint] Running source, metadata, and shell checks'
 	@bash tools/lint.sh
 
-check: lint test app
+check: lint test app daemon
 
 clean:
 	@printf '%s\n' '==> [clean] Removing generated build outputs'
 	@rm -rf -- build dist
 	@rm -f -- $(RUNTIME)
+	@$(MAKE) -C daemon --no-print-directory clean
 
 distclean: clean
 	@printf '%s\n' '==> [distclean] Removing downloaded dependency caches'
@@ -157,6 +162,7 @@ distclean: clean
 help:
 	@printf '%s\n' \
 	  'make                 Generate libc.prx and build the PeacockPS5 app folder' \
+	  'make daemon          Build the background connectivity payload ELF' \
 	  'make init TITLE_ID=PPSA12345 APP_NAME="My App"  Configure app identity' \
 	  'make doctor          Check required and optional Linux/WSL tools' \
 	  'make test            Run all host unit and integration tests' \

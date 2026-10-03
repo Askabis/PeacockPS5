@@ -14,10 +14,16 @@ PeacockPS5 is a native PS5 homebrew application that checks connectivity between
 >
 > Current prototype: TCP/HTTP probe, on-screen result, and local log. It does not yet redirect HITMAN to Peacock.
 
+La version `01.001.000` ajoute un daemon réseau indépendant destiné à rester actif pendant le lancement d'un jeu.
+
+Version `01.001.000` adds an independent network daemon designed to remain active while a game is running.
+
 ## Installation
 
 - **Français : [installer PeacockPS5 sur PS5](docs/INSTALLATION.fr.md)**
 - **English: [install PeacockPS5 on PS5](docs/INSTALLATION.en.md)**
+- **Français : [daemon en arrière-plan](docs/BACKGROUND_DAEMON.fr.md)**
+- **English: [background daemon](docs/BACKGROUND_DAEMON.en.md)**
 
 ## Cadre / Scope
 

@@ -36,6 +36,8 @@ if (( ${#test_sources[@]} )); then
 fi
 
 mapfile -d '' app_c_sources < <(find "$root/src" -type f -name '*.c' -print0)
+mapfile -d '' daemon_c_sources < <(find "$root/daemon" -type f -name '*.c' -print0)
+app_c_sources+=("${daemon_c_sources[@]}")
 if (( ${#app_c_sources[@]} )); then
     for source in "${app_c_sources[@]}"; do
         "$tidy" "$source" --warnings-as-errors='*' -- \

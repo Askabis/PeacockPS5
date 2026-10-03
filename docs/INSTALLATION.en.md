@@ -4,7 +4,7 @@
 
 PeacockPS5 is a development homebrew application, not an exploitation payload or a retail PKG. This guide assumes that your own PS5 already has a compatible homebrew environment, ShadowMountPlus (or an equivalent loader that accepts folder applications), and a running FTP server.
 
-The native foundation is currently validated on firmware 6.02 and 12.70 with ShadowMountPlus. Other combinations have not yet been verified.
+The graphical application is validated on firmware 6.02, 12.70, and 13.60 with ShadowMountPlus. Peacock connectivity on 13.60 was verified on real hardware on October 3, 2026.
 
 ## 1. Prepare Peacock on the PC
 

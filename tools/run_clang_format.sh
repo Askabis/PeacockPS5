@@ -14,7 +14,7 @@ if [[ -z $formatter ]]; then
 fi
 [[ -n $formatter ]] || { echo "clang-format is required" >&2; exit 2; }
 
-source_roots=("$root/src" "$root/tooling/native" "$root/tests")
+source_roots=("$root/src" "$root/daemon" "$root/tooling/native" "$root/tests")
 [[ -d "$root/examples" ]] && source_roots+=("$root/examples")
 mapfile -d '' sources < <(find "${source_roots[@]}" -type f \
     \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \

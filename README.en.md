@@ -11,11 +11,14 @@ The application loads its configuration, opens a bounded TCP connection, sends a
 - Configurable IPv4 TCP/HTTP probe.
 - Peacock settings can be changed without rebuilding.
 - On-screen result and local log.
+- Separate network daemon for connectivity tests while a game is running.
 - No HITMAN modification or game redirection at this stage.
 
 ## Install
 
 Follow the short guide: **[PS5 installation](docs/INSTALLATION.en.md)**.
+
+For the background test: **[PeacockPS5 daemon](docs/BACKGROUND_DAEMON.en.md)**.
 
 A prebuilt version is available from [GitHub Releases](https://github.com/Askabis/PeacockPS5/releases/latest). The project produces a development homebrew application, not a retail PKG file.
 

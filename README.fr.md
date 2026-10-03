@@ -11,11 +11,14 @@ L'application charge une configuration, ouvre une connexion TCP avec un délai l
 - Sonde IPv4 TCP/HTTP configurable.
 - Configuration Peacock modifiable sans recompilation.
 - Résultat visible à l'écran et journal local.
+- Daemon réseau séparé pour tester la connectivité pendant l'exécution d'un jeu.
 - Aucune modification de HITMAN et aucune redirection du jeu à ce stade.
 
 ## Installer
 
 Suivez le guide court : **[Installation sur PS5](docs/INSTALLATION.fr.md)**.
+
+Pour le test en arrière-plan : **[Daemon PeacockPS5](docs/BACKGROUND_DAEMON.fr.md)**.
 
 La version précompilée est disponible dans [GitHub Releases](https://github.com/Askabis/PeacockPS5/releases/latest). Le projet produit une application homebrew de développement, pas un fichier PKG retail.
 
