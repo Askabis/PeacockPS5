@@ -10,9 +10,12 @@
 #include "peacock_daemon_config.h"
 
 #include <stdbool.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -61,6 +64,17 @@ static void ensure_data_directory(void)
     (void)mkdir("/data/peacockps5", 0755);
 }
 
+static void log_stage(const char *stage, int result)
+{
+    FILE *log = fopen(PEACOCK_DAEMON_LOG_PATH, "a");
+    if (log != NULL)
+    {
+        fprintf(log, "%lld pid=%d stage=%s result=%d\n", (long long)time(NULL), (int)getpid(),
+                stage, result);
+        fclose(log);
+    }
+}
+
 static void write_state(const peacock_daemon_config_t *config, bool reachable, int status_code)
 {
     FILE *status = NULL;
@@ -89,19 +103,25 @@ static void write_state(const peacock_daemon_config_t *config, bool reachable, i
 static int http_runtime_init(http_runtime_t *runtime)
 {
     memset(runtime, 0xff, sizeof(*runtime));
-    if (sceNetInit() != 0)
+    int result = sceNetInit();
+    log_stage("sceNetInit", result);
+    if (result != 0)
         return -1;
     runtime->net_pool = sceNetPoolCreate("peacockps5_daemon", 64 * 1024, 0);
+    log_stage("sceNetPoolCreate", runtime->net_pool);
     if (runtime->net_pool < 0)
         return -1;
     runtime->ssl_context = sceSslInit(128 * 1024);
+    log_stage("sceSslInit", runtime->ssl_context);
     if (runtime->ssl_context < 0)
         return -1;
     runtime->http_context = sceHttp2Init(runtime->net_pool, runtime->ssl_context, 128 * 1024, 1);
+    log_stage("sceHttp2Init", runtime->http_context);
     if (runtime->http_context < 0)
         return -1;
     runtime->template_id =
         sceHttp2CreateTemplate(runtime->http_context, "PeacockPS5-Daemon/0.2", 3, 1);
+    log_stage("sceHttp2CreateTemplate", runtime->template_id);
     return runtime->template_id < 0 ? -1 : 0;
 }
 
@@ -142,12 +162,23 @@ int main(void)
     peacock_daemon_config_t config;
     bool previous_reachable = false;
     bool previous_known = false;
+    int lock_fd = -1;
 
     ensure_data_directory();
+    log_stage("main_entered", 0);
+    lock_fd = open("/data/peacockps5/daemon.lock", O_CREAT | O_RDWR, 0600);
+    if (lock_fd < 0 || flock(lock_fd, LOCK_EX | LOCK_NB) != 0)
+    {
+        log_stage("lock_failed", errno);
+        if (lock_fd >= 0)
+            close(lock_fd);
+        return 1;
+    }
     if (http_runtime_init(&runtime) != 0)
     {
         notify("PeacockPS5 daemon: network initialization failed");
         http_runtime_finish(&runtime);
+        close(lock_fd);
         return 1;
     }
 
@@ -159,6 +190,7 @@ int main(void)
         char message[256] = {0};
 
         (void)peacock_daemon_config_load(PEACOCK_DAEMON_CONFIG_PATH, &config);
+        log_stage("probe_begin", 0);
         status_code = probe(&runtime, &config);
         reachable = status_code >= 200 && status_code < 500;
         write_state(&config, reachable, status_code);
